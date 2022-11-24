@@ -1,0 +1,6 @@
+spring:
+  elasticsearch:
+    uris:
+      - http://172.16.11.160:30718
+    username: elastic
+    password: RqK63NV3dB00tOSv9757R6Ds

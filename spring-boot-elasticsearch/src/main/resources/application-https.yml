@@ -1,0 +1,10 @@
+spring:
+  elasticsearch:
+    uris:
+      - https://elastic-tls-es-http:31690
+    username: elastic
+    password: 4kWf88QEm7i69A5NlD4b68jL
+    custom:
+      use-ssl: true
+      key-store-path: cert/cacerts.keystore
+      key-store-password: elastic-tls-http
