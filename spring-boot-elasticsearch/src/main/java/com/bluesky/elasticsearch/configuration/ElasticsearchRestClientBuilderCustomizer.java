@@ -11,6 +11,7 @@ import org.apache.http.HttpResponse;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.impl.client.DefaultConnectionKeepAliveStrategy;
 import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
+import org.apache.http.impl.nio.reactor.IOReactorConfig;
 import org.apache.http.protocol.HttpContext;
 import org.elasticsearch.client.RestClientBuilder;
 import org.springframework.boot.autoconfigure.elasticsearch.RestClientBuilderCustomizer;
@@ -59,7 +60,10 @@ public class ElasticsearchRestClientBuilderCustomizer implements RestClientBuild
 	@Override
 	public void customize(HttpAsyncClientBuilder builder)  {
 
-		builder.setKeepAliveStrategy(new CustomConnectionKeepAliveStrategy());
+
+		builder.setDefaultIOReactorConfig(IOReactorConfig.custom()
+				// 保持连接检测对方主机是否崩溃，避免（服务器）永远阻塞于TCP连接的输入 需要net.ipv4.tcp_keepalive_time配合
+				.setSoKeepAlive(true).build());
 
 		if (!elasticsearchCustomProperties.isUseSsl()) {
 			return;
@@ -114,18 +118,4 @@ public class ElasticsearchRestClientBuilderCustomizer implements RestClientBuild
 		return tm;
 	}
 
-
-	class CustomConnectionKeepAliveStrategy extends DefaultConnectionKeepAliveStrategy {
-		@Override
-		public long getKeepAliveDuration(HttpResponse response, HttpContext context) {
-			long keepAlive = super.getKeepAliveDuration(response, context);
-
-			if (keepAlive == -1) {
-
-				keepAlive = elasticsearchCustomProperties.getKeepAliveTime();
-
-			}
-			return keepAlive;
-		}
-	}
 }

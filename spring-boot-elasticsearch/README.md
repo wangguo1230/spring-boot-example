@@ -128,3 +128,110 @@ Elasticsearch 版本显示了使用哪些客户端库构建和测试了 Spring D
 ```shell
 sudo keytool -import -alias <证书别名> -keystore cacerts.keystore -file your.crt
 ```
+
+## 常见问题
+
+### 长时间不连接ES出现Connection reset by peer
+
+报这个错的原因是 因为服务端已经关闭了链接，但是客户端还在使用这个链接
+
+1. 为什么服务端会关闭链接？
+
+    linux查看超时时间默认为两小时
+
+``` shell
+[root@localhost docker]# sysctl net.ipv4.tcp_keepalive_time
+net.ipv4.tcp_keepalive_time = 7200
+```
+
+2. 客户端为什么一直持有？
+
+客户端默认的KeepAlive时间为-1，也就是一直不过期。
+```java
+public long getKeepAliveDuration(final HttpResponse response, final HttpContext context) {
+        Args.notNull(response, "HTTP response");
+        final HeaderElementIterator it = new BasicHeaderElementIterator(
+                response.headerIterator(HTTP.CONN_KEEP_ALIVE));
+        while (it.hasNext()) {
+            final HeaderElement he = it.nextElement();
+            final String param = he.getName();
+            final String value = he.getValue();
+            if (value != null && param.equalsIgnoreCase("timeout")) {
+                try {
+                    return Long.parseLong(value) * 1000;
+                } catch(final NumberFormatException ignore) {
+                }
+            }
+        }
+        return -1;
+    }
+```
+
+
+解决办法：
+有俩个解决办法：
+1. 开启客户端的TCP探测功能，这样就可以一直保持连接。最优方案
+
+```java
+public void customize(HttpAsyncClientBuilder builder)  {
+
+        // 保持连接检测对方主机是否崩溃，避免（服务器）永远阻塞于TCP连接的输入 需要net.ipv4.tcp_keepalive_time配合
+		builder.setDefaultIOReactorConfig(IOReactorConfig.custom()
+		.setSoKeepAlive(true).build());
+		
+} 
+```
+
+这个需要操作系统的tcp_keepalive_time参数来配合。
+
+查看探测
+``` shell
+[root@localhost docker]# sysctl 
+net.ipv4.tcp_keepalive_time = 7200
+net.ipv4.tcp_keepalive_intvl = 75
+net.ipv4.tcp_keepalive_probes = 9
+```
+
+通常应将net.ipv4.tcp_keepalive_time设置为300。
+默认值7200秒（即2小时）几乎肯定太长，无法等待发送第一个keepalive。
+
+
+TCP KeepAlive机制主要涉及3个参数：
+
+- tcp_keepalive_time (integer; default: 7200; since Linux 2.2)
+  在TCP保活打开的情况下，最后一次数据交换到TCP发送第一个保活探测包的间隔，即允许的持续空闲时长，或者说每次正常发送心跳的周期，默认值为7200s（2h）。
+
+- tcp_keepalive_probes (integer; default: 9; since Linux 2.2)
+
+在tcp_keepalive_time之后，最大允许发送保活探测包的次数，到达此次数后直接放弃尝试，并关闭连接，默认值为9（次）。
+
+- tcp_keepalive_intvl (integer; default: 75; since Linux 2.4)
+
+在tcp_keepalive_time之后，没有接收到对方确认，继续发送保活探测包的发送频率，默认值为75s。
+
+2. 设置HttpAsyncClientBuilder的ConnectionKeepAliveStrategy连接时间 ，当 Elasticsearch 客户端与服务器保持良好连接时，此配置会影响 HTTP 连接的重用
+
+```java
+class CustomConnectionKeepAliveStrategy extends DefaultConnectionKeepAliveStrategy {
+		@Override
+		public long getKeepAliveDuration(HttpResponse response, HttpContext context) {
+			long keepAlive = super.getKeepAliveDuration(response, context);
+
+			if (keepAlive == -1) {
+
+				keepAlive = 7100;
+
+			}
+			return keepAlive;
+		}
+}
+```
+
+
+```java 
+builder.setKeepAliveStrategy(new CustomConnectionKeepAliveStrategy());
+```
+
+
+
+> 参考 [GitHub Issue](https://github.com/elastic/elasticsearch/issues/65213)
