@@ -34,4 +34,11 @@ public class ElasticsearchCustomProperties {
 	 * 证书密码
 	 */
 	private String keyStorePassword;
+
+	/**
+	 * HttpAsyncClient 连接保活时间 服务器默认的TCP保活时间为 net.ipv4.tcp_keepalive_time = 7200 2小时
+	 * 如果服务器关闭了连接 这时候客户端还持有连接 没有提前关闭 这时候访问就会报 Connection reset by peer
+	 * 所以这个时间要小于服务端的时间
+	 */
+	private Long keepAliveTime = 7199L;
 }

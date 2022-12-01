@@ -7,8 +7,11 @@ package  com.bluesky.elasticsearch.configuration;;
 import cn.hutool.core.io.resource.ResourceUtil;
 import com.bluesky.elasticsearch.configuration.ElasticsearchCustomProperties;
 import lombok.AllArgsConstructor;
+import org.apache.http.HttpResponse;
 import org.apache.http.client.config.RequestConfig;
+import org.apache.http.impl.client.DefaultConnectionKeepAliveStrategy;
 import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
+import org.apache.http.protocol.HttpContext;
 import org.elasticsearch.client.RestClientBuilder;
 import org.springframework.boot.autoconfigure.elasticsearch.RestClientBuilderCustomizer;
 import org.springframework.util.StringUtils;
@@ -55,6 +58,8 @@ public class ElasticsearchRestClientBuilderCustomizer implements RestClientBuild
 	 */
 	@Override
 	public void customize(HttpAsyncClientBuilder builder)  {
+
+		builder.setKeepAliveStrategy(new CustomConnectionKeepAliveStrategy());
 
 		if (!elasticsearchCustomProperties.isUseSsl()) {
 			return;
@@ -107,5 +112,20 @@ public class ElasticsearchRestClientBuilderCustomizer implements RestClientBuild
 			throw new RuntimeException(e);
 		}
 		return tm;
+	}
+
+
+	class CustomConnectionKeepAliveStrategy extends DefaultConnectionKeepAliveStrategy {
+		@Override
+		public long getKeepAliveDuration(HttpResponse response, HttpContext context) {
+			long keepAlive = super.getKeepAliveDuration(response, context);
+
+			if (keepAlive == -1) {
+
+				keepAlive = elasticsearchCustomProperties.getKeepAliveTime();
+
+			}
+			return keepAlive;
+		}
 	}
 }
